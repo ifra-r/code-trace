@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# CodeGraph generated data
+.codegraph/*.db
+.codegraph/*.db-*
+.codegraph/*.sqlite
+.codegraph/*.sqlite3
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
