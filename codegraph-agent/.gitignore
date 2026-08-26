@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyc
 
 # Virtual environment
 .venv/
@@ -18,11 +19,13 @@ env/
 .codegraph/*.db-*
 .codegraph/*.sqlite
 .codegraph/*.sqlite3
+.codegraph/repos/
 
 # Frontend
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/node_modules/ 
 
 # IDE / editor
 .vscode/
