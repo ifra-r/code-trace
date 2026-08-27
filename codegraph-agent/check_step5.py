@@ -23,6 +23,9 @@ import tempfile
 import traceback
 from pathlib import Path
 
+from adapters.storage.sqlite_store import GraphStore 
+from core.graph.models import Node, NodeType, EdgeType, Edge
+
 FAILURES = []
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -380,6 +383,107 @@ def real_flask_prose_query():
         f"{results[0].name} ({results[0].file_path}:{results[0].start_line})"
     )
 
+# tests for nested fix
+def synth_nested_class_method_retrieval():
+    tmp, store, repo_id, ids = make_synthetic_store()
+
+    try:
+        class_node = Node(
+            id=None,
+            repo_id=repo_id,
+            type=NodeType.CLASS,
+            name="Session",
+            file_path="sessions.py",
+            start_line=1,
+            end_line=20,
+            source_text="class Session: ...",
+            docstring="",
+        )
+
+        method_node = Node(
+            id=None,
+            repo_id=repo_id,
+            type=NodeType.METHOD,
+            name="request",
+            file_path="sessions.py",
+            start_line=5,
+            end_line=10,
+            source_text="def request(self): ...",
+            docstring="Send an HTTP request.",
+        )
+
+        class_id = store.add_node(class_node)
+        method_id = store.add_node(method_node)
+
+        store.add_edge(
+            Edge(
+                id=None,
+                repo_id=repo_id,
+                source_node_id=class_id,
+                target_node_id=method_id,
+                type=EdgeType.CONTAINS,
+                resolved=True,
+            )
+        )
+
+        results = store.search_symbols("Session.request", limit=5)
+
+        assert results, "nested Session.request query returned no results"
+        assert results[0].name == "request"
+
+    finally:
+        tmp.cleanup()
+
+
+def synth_nested_function_retrieval():
+    tmp, store, repo_id, ids = make_synthetic_store()
+
+    try:
+        outer = Node(
+            id=None,
+            repo_id=repo_id,
+            type=NodeType.FUNCTION,
+            name="outer",
+            file_path="example.py",
+            start_line=1,
+            end_line=20,
+            source_text="def outer(): ...",
+            docstring="",
+        )
+
+        inner = Node(
+            id=None,
+            repo_id=repo_id,
+            type=NodeType.FUNCTION,
+            name="inner",
+            file_path="example.py",
+            start_line=5,
+            end_line=10,
+            source_text="def inner(): ...",
+            docstring="Handle the request.",
+        )
+
+        outer_id = store.add_node(outer)
+        inner_id = store.add_node(inner)
+
+        store.add_edge(
+            Edge(
+                id=None,
+                repo_id=repo_id,
+                source_node_id=outer_id,
+                target_node_id=inner_id,
+                type=EdgeType.CONTAINS,
+                resolved=True,
+            )
+        )
+
+        results = store.search_symbols("outer.inner", limit=5)
+
+        assert results, "nested outer.inner query returned no results"
+        assert results[0].name == "inner"
+
+    finally:
+        tmp.cleanup()
 
 # ---------------------------------------------------------------------------
 # Main
@@ -449,6 +553,10 @@ def main() -> int:
         "REAL flask: prose retrieval",
         real_flask_prose_query,
     )
+
+    check("synthetic: nested class method retrieval", synth_nested_class_method_retrieval)
+    check("synthetic: nested function retrieval", synth_nested_function_retrieval)
+
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) FAILED: {FAILURES}")

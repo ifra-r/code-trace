@@ -149,7 +149,8 @@ class SqliteGraphStore:
 
     # ---- internals ----
 
-    # added contains relationship after the fix
+    # fix 2: added nested 
+    # fix 1: added contains relationship after the fix
     def _get_or_build_bm25(self) -> BM25Retriever:
         if self._bm25 is None:
             rows = self._conn.execute(
@@ -157,26 +158,53 @@ class SqliteGraphStore:
                 "WHERE file_path != ?", (_EXTERNAL_FILE,),
             ).fetchall()
 
+            def qualified_name(node_id: int, name: str) -> str:
+                parts = [name]
+                current_id = node_id
+
+                while True:
+                    parent = self._conn.execute(
+                        """
+                        SELECT n.id, n.name
+                        FROM edges e
+                        JOIN nodes n ON n.id = e.source_node_id
+                        WHERE e.target_node_id=?
+                        AND e.type='contains'
+                        LIMIT 1
+                        """,
+                        (current_id,),
+                    ).fetchone()
+
+                    if parent is None:
+                        break
+
+                    parent_id, parent_name = parent
+
+                    # Stop at the file node.
+                    file_parent = self._conn.execute(
+                        "SELECT type FROM nodes WHERE id=?",
+                        (parent_id,),
+                    ).fetchone()
+
+                    if file_parent and file_parent[0] == "file":
+                        break
+
+                    parts.append(parent_name)
+                    current_id = parent_id
+
+                return ".".join(reversed(parts))
+
             docs = []
 
             for node_id, name, docstring, source_text in rows:
-                # Find the immediate CONTAINS parent, if this node has one.
-                parent = self._conn.execute(
-                    """
-                    SELECT n.name
-                    FROM edges e
-                    JOIN nodes n ON n.id = e.source_node_id
-                    WHERE e.target_node_id=?
-                    AND e.type='contains'
-                    LIMIT 1
-                    """,
-                    (node_id,),
-                ).fetchone()
-
-                qualified_name = f"{parent[0]}.{name}" if parent else name
+                qualified = qualified_name(node_id, name)
 
                 docs.append(
-                    (node_id, name, f"{qualified_name} {name} {docstring} {source_text}")
+                    (
+                        node_id,
+                        name,
+                        f"{qualified} {name} {docstring} {source_text}",
+                    )
                 )
 
             self._bm25 = BM25Retriever(docs)
