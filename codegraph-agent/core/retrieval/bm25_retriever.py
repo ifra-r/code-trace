@@ -1,13 +1,15 @@
-"""BM25 symbol/text retriever (build step 5). Deterministic, no LLM, no
-embeddings -- the design doc's retrieval choice (§3): "Exact/fuzzy symbol +
-docstring match, plus rank_bm25 over chunk text."
+"""BM25 symbol/text retriever (build step 5, extended in step 6). Deterministic,
+no LLM, no embeddings -- the design doc's retrieval choice (§3): "Exact/fuzzy
+symbol + docstring match, plus rank_bm25 over chunk text."
 
 Implemented as ONE ranked list rather than two separate mechanisms: BM25
-scores `name + docstring + source_text`, and exact/prefix/substring matches
-on the symbol name are added as a score boost on top. This means a query
-that IS a symbol name (e.g. "Session.request") reliably surfaces that exact
-symbol first, while prose queries (e.g. "send an email to the user") still
-rank purely on BM25 relevance when no name matches.
+scores `qualified_name + name + docstring + source_text`, and exact/prefix/
+substring matches on the symbol name (or its dotted qualified name, e.g.
+"Session.request") are added as a score boost on top. Without the qualified
+name, a query for "Session.request" scored no better than any other function
+named "request" repo-wide -- the boost needs the class-qualified string to
+disambiguate, since BM25 alone can't tell "Session.request" apart from
+"OtherClass.request" by relevance score.
 
 Library-free at the token level: identifiers are split on snake_case AND
 camelCase/PascalCase boundaries (HTTPAdapter -> ["http", "adapter"]) so code
@@ -54,13 +56,13 @@ def _split_identifier(raw: str) -> List[str]:
 class BM25Retriever:
     """In-memory BM25 index over a fixed corpus of (node_id, name, text)
     triples. Built once per corpus snapshot, queried many times. Owns no
-    SQLite/Node knowledge -- the caller decides what goes into `text`."""
+    SQLite/Node knowledge -- the caller decides what goes into `text`
+    (the store puts the qualified name first, e.g. "Session.request ...")."""
 
     def __init__(self, docs: Sequence[Tuple[int, str, str]]) -> None:
         self._doc_ids: List[int] = [d[0] for d in docs]
         self._names: List[str] = [d[1] for d in docs]
         self._texts: List[str] = [d[2] for d in docs]
-
         tokenized = [tokenize(d[2]) for d in docs]
         self._bm25 = BM25Okapi(tokenized) if tokenized else None
 
@@ -81,23 +83,18 @@ class BM25Retriever:
         for idx, score in enumerate(scores):
             name_lower = self._names[idx].lower()
             text_lower = self._texts[idx].lower()
+            # text is "qualified_name name docstring source_text" -- a query
+            # that matches the qualified name exactly (e.g. "session.request")
+            # should boost just as hard as an exact bare-name match.
+            qualified_exact = bool(query_lower) and text_lower.startswith(
+                query_lower + " ")
 
-            # The store puts the qualified symbol name first:
-            # e.g. "Session.request request ..."
-            qualified_exact = (
-                query_lower
-                and text_lower.startswith(query_lower + " ")
-            )
-
-            if query_lower and (
-                name_lower == query_lower or qualified_exact
-            ):
+            if query_lower and (name_lower == query_lower or qualified_exact):
                 score += _EXACT_NAME_BOOST
             elif query_lower and name_lower.startswith(query_lower):
                 score += _PREFIX_NAME_BOOST
             elif query_lower and query_lower in name_lower:
                 score += _SUBSTRING_NAME_BOOST
-
             boosted.append((self._doc_ids[idx], float(score)))
 
         boosted.sort(key=lambda pair: pair[1], reverse=True)

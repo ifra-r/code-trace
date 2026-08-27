@@ -1,6 +1,8 @@
 """SQLite-backed GraphStore — one DB file per indexed repo: .codegraph/graph.db.
-Write side landed in step 4. `search_symbols` (BM25 + name matching) lands in
-step 5. `get_node` / `get_neighbors` / `get_subgraph` still land in step 6.
+Write side landed in step 4. `search_symbols` (BM25 + name matching) landed
+in step 5. Step 6 (this implementation): the full frozen query contract --
+get_node, get_neighbors, get_subgraph, search_symbols. From here on, /api,
+/core/agent, and /mcp touch only this interface, never the DB directly.
 """
 
 import sqlite3
@@ -67,7 +69,11 @@ class SqliteGraphStore:
     # ---- frozen query contract ----
 
     def get_node(self, node_id: int) -> Optional[Node]:
-        raise NotImplementedError("implemented in build step 6")
+        """Resolve a node id to a full Node (incl. file/lines). None if
+        unknown. This is the whole reason node ids are stable and
+        resolvable per §4 -- every citation ultimately calls this."""
+        rows = self._fetch_nodes_by_ids([node_id])
+        return rows[0] if rows else None
 
     def get_neighbors(
         self,
@@ -76,32 +82,71 @@ class SqliteGraphStore:
         *,
         direction: Direction = "out",
     ) -> List[Node]:
-        raise NotImplementedError("implemented in build step 6")
+        """
+        direction="out"  -> callees   (edges leaving node_id)
+        direction="in"   -> callers   (edges entering node_id)
+        direction="both" -> union of both, de-duplicated, out-then-in order
+        """
+        ids: List[int] = []
+        seen = set()
+
+        def collect(sql: str, params: list) -> None:
+            for (nid,) in self._conn.execute(sql, params).fetchall():
+                if nid not in seen:
+                    seen.add(nid)
+                    ids.append(nid)
+
+        if direction in ("out", "both"):
+            sql = "SELECT target_node_id FROM edges WHERE source_node_id=?"
+            params = [node_id]
+            if edge_type is not None:
+                sql += " AND type=?"
+                params.append(edge_type.value)
+            collect(sql + " ORDER BY id", params)
+
+        if direction in ("in", "both"):
+            sql = "SELECT source_node_id FROM edges WHERE target_node_id=?"
+            params = [node_id]
+            if edge_type is not None:
+                sql += " AND type=?"
+                params.append(edge_type.value)
+            collect(sql + " ORDER BY id", params)
+
+        return self._fetch_nodes_by_ids(ids)
 
     def get_subgraph(self, node_ids: Sequence[int]) -> Subgraph:
-        raise NotImplementedError("implemented in build step 6")
+        """Induced subgraph over node_ids (known ids only) + edges among
+        them. Unknown ids are silently dropped, not an error -- callers
+        (e.g. flow_tracer building a react-flow payload) typically pass ids
+        gathered from several sources and shouldn't have to pre-validate."""
+        nodes = self._fetch_nodes_by_ids(node_ids)
+        known_ids = [n.id for n in nodes]
+        if not known_ids:
+            return Subgraph(nodes=tuple(), edges=tuple())
+
+        placeholders = ",".join("?" * len(known_ids))
+        rows = self._conn.execute(
+            f"SELECT id, repo_id, source_node_id, target_node_id, type, resolved "
+            f"FROM edges WHERE source_node_id IN ({placeholders}) "
+            f"AND target_node_id IN ({placeholders})",
+            known_ids + known_ids,
+        ).fetchall()
+        edges = tuple(
+            Edge(id=r[0], repo_id=r[1], source_node_id=r[2], target_node_id=r[3],
+                 type=EdgeType(r[4]), resolved=bool(r[5]))
+            for r in rows
+        )
+        return Subgraph(nodes=tuple(nodes), edges=edges)
 
     def search_symbols(self, query: str, limit: int = 10) -> List[Node]:
-        """BM25 (name+docstring+source_text) with exact/prefix/substring
-        name-match boosting -- see core/retrieval/bm25_retriever.py. External
-        stub nodes (unresolved call targets, file_path="<external>") are
-        never indexed: they aren't real source and have nothing to cite."""
+        """BM25 (qualified_name+name+docstring+source_text) with exact/
+        prefix/substring name-match boosting -- see bm25_retriever.py.
+        External stub nodes (unresolved call targets, file_path="<external>")
+        are never indexed: they aren't real source and have nothing to cite."""
         retriever = self._get_or_build_bm25()
         hits = retriever.search(query, limit=limit)
-        if not hits:
-            return []
-
         ids = [node_id for node_id, _score in hits]
-        placeholders = ",".join("?" * len(ids))
-        rows = self._conn.execute(
-            f"SELECT id, repo_id, type, name, file_path, start_line, end_line, "
-            f"source_text, docstring FROM nodes WHERE id IN ({placeholders})",
-            ids,
-        ).fetchall()
-        by_id = {row[0]: row for row in rows}
-        # preserve BM25's ranked order; a ranking result missing from `rows`
-        # would mean a stale/deleted node id, so skip rather than raise
-        return [self._row_to_node(by_id[i]) for i in ids if i in by_id]
+        return self._fetch_nodes_by_ids(ids)
 
     # ---- pipeline-facing write side ----
 
@@ -149,67 +194,61 @@ class SqliteGraphStore:
 
     # ---- internals ----
 
-    # fix 2: added nested 
-    # fix 1: added contains relationship after the fix
+    def _fetch_nodes_by_ids(self, ids: Sequence[int]) -> List[Node]:
+        """Hydrates node ids to Nodes, preserving the input order (so BM25
+        rank order and get_neighbors' edge-id order both survive). Unknown
+        ids are silently dropped -- shared by get_node/get_neighbors/
+        get_subgraph/search_symbols so there's exactly one row->Node path."""
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        rows = self._conn.execute(
+            f"SELECT id, repo_id, type, name, file_path, start_line, end_line, "
+            f"source_text, docstring FROM nodes WHERE id IN ({placeholders})",
+            list(ids),
+        ).fetchall()
+        by_id = {row[0]: row for row in rows}
+        return [self._row_to_node(by_id[i]) for i in ids if i in by_id]
+
     def _get_or_build_bm25(self) -> BM25Retriever:
         if self._bm25 is None:
             rows = self._conn.execute(
                 "SELECT id, name, docstring, source_text FROM nodes "
                 "WHERE file_path != ?", (_EXTERNAL_FILE,),
             ).fetchall()
-
-            def qualified_name(node_id: int, name: str) -> str:
-                parts = [name]
-                current_id = node_id
-
-                while True:
-                    parent = self._conn.execute(
-                        """
-                        SELECT n.id, n.name
-                        FROM edges e
-                        JOIN nodes n ON n.id = e.source_node_id
-                        WHERE e.target_node_id=?
-                        AND e.type='contains'
-                        LIMIT 1
-                        """,
-                        (current_id,),
-                    ).fetchone()
-
-                    if parent is None:
-                        break
-
-                    parent_id, parent_name = parent
-
-                    # Stop at the file node.
-                    file_parent = self._conn.execute(
-                        "SELECT type FROM nodes WHERE id=?",
-                        (parent_id,),
-                    ).fetchone()
-
-                    if file_parent and file_parent[0] == "file":
-                        break
-
-                    parts.append(parent_name)
-                    current_id = parent_id
-
-                return ".".join(reversed(parts))
-
             docs = []
-
             for node_id, name, docstring, source_text in rows:
-                qualified = qualified_name(node_id, name)
-
-                docs.append(
-                    (
-                        node_id,
-                        name,
-                        f"{qualified} {name} {docstring} {source_text}",
-                    )
-                )
-
+                qualified = self._qualified_name(node_id, name)
+                text = f"{qualified} {name} {docstring} {source_text}"
+                docs.append((node_id, name, text))
             self._bm25 = BM25Retriever(docs)
-
         return self._bm25
+
+    def _qualified_name(self, node_id: int, name: str) -> str:
+        """Walks CONTAINS edges upward (method -> class -> outer class...)
+        to build a dotted qualified name like "Session.request", stopping at
+        the file. Lets BM25/exact-match boosting find "Session.request" or
+        plain "Session" queries without the caller pre-computing nesting."""
+        parts = [name]
+        current_id = node_id
+        while True:
+            row = self._conn.execute(
+                """
+                SELECT n.id, n.name, n.type FROM edges e
+                JOIN nodes n ON n.id = e.source_node_id
+                WHERE e.target_node_id = ? AND e.type = 'contains'
+                LIMIT 1
+                """,
+                (current_id,),
+            ).fetchone()
+            if row is None:
+                break
+            parent_id, parent_name, parent_type = row
+            if parent_type == "file":
+                break
+            parts.append(parent_name)
+            current_id = parent_id
+        return ".".join(reversed(parts))
 
     @staticmethod
     def _row_to_node(row) -> Node:
