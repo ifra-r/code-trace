@@ -11,7 +11,7 @@ graph visualization in step 11) wants real graph-library features.
 
 from typing import Dict, List, Optional
 
-from core.graph.models import EdgeType, Node
+from core.graph.models import Edge, EdgeType, Node
 from core.retrieval.interfaces import GraphStore
 
 _EXTERNAL_FILE = "<external>"  # keep in sync with core/graph/graph_builder.py
@@ -113,3 +113,31 @@ def _greedy_walk(store: GraphStore, start_id: int, max_depth: int) -> List[Node]
 
     nodes = [store.get_node(nid) for nid in path_ids]
     return [n for n in nodes if n is not None]
+
+
+def find_call_edges(store: GraphStore, path_nodes: List[Node]) -> List[Edge]:
+    """The CALLS edges directly between consecutive nodes in an ordered path
+    (as returned by find_call_path), in path order. Only consecutive pairs
+    are included -- get_subgraph's induced edges could include incidental
+    extra CALLS edges among non-consecutive path nodes; those aren't part of
+    the traced path itself.
+
+    Shared by core/agent/flow_tracer.py and mcp_server/server.py so both
+    layers agree on exactly what counts as "the path's edges" instead of
+    each reimplementing the same projection -- this belongs here (core
+    graph logic), not duplicated in either consumer.
+    """
+    ids = [n.id for n in path_nodes]
+    if len(ids) < 2:
+        return []
+    subgraph = store.get_subgraph(ids)
+    by_pair = {
+        (e.source_node_id, e.target_node_id): e
+        for e in subgraph.edges if e.type == EdgeType.CALLS
+    }
+    edges: List[Edge] = []
+    for i in range(len(ids) - 1):
+        edge = by_pair.get((ids[i], ids[i + 1]))
+        if edge is not None:
+            edges.append(edge)
+    return edges
