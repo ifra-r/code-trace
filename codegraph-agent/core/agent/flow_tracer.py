@@ -17,8 +17,8 @@ from typing import Dict, List, Optional
 from core.agent.qa_agent import _extract_symbol_candidates  # reused: same
 # "does this query look like a symbol name" heuristic applies to flow-trace
 # entry/target resolution as it does to Q&A's search_symbols calls.
-from core.graph.models import EdgeType, Node
-from core.graph.traversal import find_call_path
+from core.graph.models import Node
+from core.graph.traversal import find_call_edges, find_call_path
 from core.retrieval.interfaces import GraphStore, LLMProvider
 
 _MAX_NARRATION_SOURCE_CHARS = 800
@@ -73,30 +73,15 @@ class FlowTracer:
 
     def _edges_for_path(self, path_nodes: List[Node]) -> List[dict]:
         """Only the CALLS edges directly between consecutive path steps, in
-        path order -- a simple chain for react-flow to draw. get_subgraph's
-        induced edges could include incidental extra CALLS edges among
-        non-consecutive path nodes; those aren't part of the traced path
-        itself, so they're intentionally excluded here rather than surfaced
-        as unexplained extra arrows."""
-        ids = [n.id for n in path_nodes]
-        if len(ids) < 2:
-            return []
-        subgraph = self.store.get_subgraph(ids)
-        by_pair = {
-            (e.source_node_id, e.target_node_id): e
-            for e in subgraph.edges if e.type == EdgeType.CALLS
-        }
-        edges = []
-        for i in range(len(ids) - 1):
-            edge = by_pair.get((ids[i], ids[i + 1]))
-            if edge is not None:
-                edges.append({
-                    "source": edge.source_node_id,
-                    "target": edge.target_node_id,
-                    "type": edge.type.value,
-                    "resolved": edge.resolved,
-                })
-        return edges
+        path order -- shared with mcp_server/server.py's trace_path tool via
+        core/graph/traversal.find_call_edges, so both layers agree on
+        exactly what counts as "the path's edges" instead of each
+        reimplementing the same projection."""
+        return [
+            {"source": e.source_node_id, "target": e.target_node_id,
+             "type": e.type.value, "resolved": e.resolved}
+            for e in find_call_edges(self.store, path_nodes)
+        ]
 
     # ---------------- narration ----------------
 
