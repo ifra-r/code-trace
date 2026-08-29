@@ -1,0 +1,78 @@
+/*
+ * Theme variables. Every component in this app reads ONLY these custom
+ * properties — never a hardcoded color or font. To ship a new theme later:
+ *   1. Add a new [data-theme="..."] block below with its own values.
+ *   2. Set document.documentElement.dataset.theme = "whatever" (a toggle
+ *      button, a settings page, prefers-color-scheme listener — anything).
+ * No component CSS or JSX needs to change for a new theme to work.
+ *
+ * Current theme: warm white / black text / red accent, with citations
+ * styled as a soft, low-contrast "highlighted term" bubble (grey, not
+ * colored) so the red stays reserved for the one thing it should mean:
+ * a real, resolved symbol name.
+ */
+
+:root {
+  --bg: #f7f3ec;
+  --bg-elevated: #fffdf9;
+  --bg-sunken: #efe9de;
+  --text: #1c1a17;
+  --text-muted: #6f6a60;
+  --border: #e2d9c8;
+
+  --accent: #c0362c;
+  --accent-hover: #a62d24;
+  --accent-soft: #f4d9d5;
+  --accent-contrast: #fffaf5;
+
+  --citation-bg: rgba(28, 26, 23, 0.05);
+  --citation-bg-hover: rgba(28, 26, 23, 0.09);
+  --citation-text: #38342d;
+  --citation-border: rgba(28, 26, 23, 0.08);
+
+  --success: #2e7d4f;
+  --success-bg: #e3f1e7;
+  --error: #a8291f;
+  --error-bg: #fbeae7;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(28, 26, 23, 0.05);
+  --shadow-md: 0 8px 24px rgba(28, 26, 23, 0.08);
+}
+
+/*
+ * Example alternate theme (not wired to any UI control yet — this is here
+ * so the NEXT theme is a copy-paste-and-tweak job, not a redesign).
+ * Enable by setting <html data-theme="navy">.
+ *
+ * [data-theme="navy"] {
+ *   --bg: #0b1220;
+ *   --bg-elevated: #121b2e;
+ *   --bg-sunken: #0e1626;
+ *   --text: #f2f2f0;
+ *   --text-muted: #93a0b3;
+ *   --border: #223049;
+ *
+ *   --accent: #e2544a;
+ *   --accent-hover: #ef685e;
+ *   --accent-soft: rgba(226, 84, 74, 0.18);
+ *   --accent-contrast: #fffaf5;
+ *
+ *   --citation-bg: rgba(255, 255, 255, 0.08);
+ *   --citation-bg-hover: rgba(255, 255, 255, 0.14);
+ *   --citation-text: #e7e7e5;
+ *   --citation-border: rgba(255, 255, 255, 0.12);
+ *
+ *   --success: #4cae76;
+ *   --success-bg: rgba(76, 174, 118, 0.15);
+ *   --error: #f07268;
+ *   --error-bg: rgba(240, 114, 104, 0.15);
+ * }
+ */
