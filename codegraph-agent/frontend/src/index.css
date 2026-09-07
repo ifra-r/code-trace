@@ -52,6 +52,25 @@ body {
   white-space: nowrap;
 }
 
+.mode-tabs { display: flex; gap: 4px; }
+.mode-tab {
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 13px;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mode-tab:hover { background: var(--bg-sunken); }
+.mode-tab.active {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
 .status-dot {
   margin-left: auto;
   font-size: 0.8rem;
@@ -364,4 +383,144 @@ button.citation-chip:hover:not(:disabled) { background: var(--citation-bg-hover)
   text-align: right;
   margin-right: 16px;
   user-select: none;
+}
+
+/* ---------- flow trace page ---------- */
+
+.flow-page {
+  flex: 1;
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px 40px;
+}
+
+.flow-form { display: flex; gap: 10px; flex-wrap: wrap; }
+.flow-form input { flex: 1; min-width: 200px; font-family: var(--font-mono); font-size: 0.92rem; }
+
+.flow-status { margin-top: 20px; }
+.flow-status.error-banner { padding: 16px 18px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+
+.flow-result {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 26px;
+}
+
+.flow-graph {
+  width: 360px;
+  height: 600px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.flow-steps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.flow-step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.flow-step:hover { background: var(--bg-sunken); }
+.flow-step-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+.flow-step-order {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--citation-bg);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-step-body { min-width: 0; }
+.flow-step-text { margin: 0 0 6px; line-height: 1.55; overflow-wrap: break-word; }
+
+/* react-flow theming -- override its default blue handles/attribution to
+   match the rest of the app instead of looking like a bolted-on widget */
+.react-flow__handle {
+  background: var(--accent);
+  width: 8px;
+  height: 8px;
+  border: none;
+}
+.react-flow__controls-button {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.react-flow__controls-button:hover { background: var(--bg-sunken); }
+
+.trace-node {
+  min-width: 220px;
+  max-width: 270px;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+.trace-node-order {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--citation-bg);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.trace-node-body { min-width: 0; }
+.trace-node-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.trace-node-loc {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+}
+.trace-node-start, .trace-node-end { border-color: var(--accent); }
+.trace-node-start .trace-node-order,
+.trace-node-end .trace-node-order { background: var(--accent); color: var(--accent-contrast); }
+.trace-node-selected { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+@media (max-width: 760px) {
+  .flow-result { flex-direction: column; }
+  .flow-graph { width: 100%; height: 420px; }
+  .flow-steps { max-height: none; }
 }

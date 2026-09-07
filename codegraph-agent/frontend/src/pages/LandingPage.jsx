@@ -30,10 +30,10 @@ export default function LandingPage() {
     runIndex(false);
   }
 
-  function goToQnA() {
+  function goTo(mode) {
     const repo = result.repo;
     navigate(
-      `/qna?repo=${encodeURIComponent(repo.source_url)}&name=${encodeURIComponent(
+      `/${mode}?repo=${encodeURIComponent(repo.source_url)}&name=${encodeURIComponent(
         repo.name
       )}`
     );
@@ -45,8 +45,8 @@ export default function LandingPage() {
         <h1 className="landing-title">Understand any codebase, fast.</h1>
         <p className="landing-subtitle">
           Paste a public GitHub repo URL. CodeTrace builds a grounded code
-          graph you can ask questions against — every answer cites exact
-          source lines.
+          graph you can ask questions against or trace call paths through —
+          every answer cites exact source lines.
         </p>
 
         <form className="landing-form" onSubmit={handleSubmit}>
@@ -85,11 +85,14 @@ export default function LandingPage() {
             </p>
             <p className="confirm-question">Re-index to pick up changes?</p>
             <div className="confirm-actions">
-              <button type="button" className="secondary" onClick={goToQnA}>
-                Use existing index
-              </button>
-              <button type="button" onClick={() => runIndex(true)}>
+              <button type="button" className="secondary" onClick={() => runIndex(true)}>
                 Re-index
+              </button>
+              <button type="button" onClick={() => goTo("qna")}>
+                Q&amp;A →
+              </button>
+              <button type="button" onClick={() => goTo("flow")}>
+                Flow Trace →
               </button>
             </div>
           </div>
@@ -102,9 +105,14 @@ export default function LandingPage() {
               <span className="stat-figure">{result.node_count}</span> symbols,{" "}
               <span className="stat-figure">{result.edge_count}</span> edges.
             </p>
-            <button type="button" onClick={goToQnA}>
-              Continue to Q&amp;A →
-            </button>
+            <div className="confirm-actions">
+              <button type="button" onClick={() => goTo("qna")}>
+                Q&amp;A →
+              </button>
+              <button type="button" onClick={() => goTo("flow")}>
+                Flow Trace →
+              </button>
+            </div>
           </div>
         )}
       </div>
