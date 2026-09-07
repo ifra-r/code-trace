@@ -19,4 +19,6 @@ export const api = {
     request("/index", { method: "POST", body: { url, force } }),
   ask: (url, question) =>
     request("/ask", { method: "POST", body: { url, question } }),
+  trace: (url, query, target) =>
+    request("/trace", { method: "POST", body: { url, query, target: target || null } }),
 };

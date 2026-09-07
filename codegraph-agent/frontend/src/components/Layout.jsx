@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 
-export default function Layout({ repoName, children }) {
+export default function Layout({ repoName, repoUrl, mode, children }) {
   const [backendUp, setBackendUp] = useState(null); // null = still checking
 
   useEffect(() => {
@@ -25,6 +25,10 @@ export default function Layout({ repoName, children }) {
       ? "backend connected"
       : "backend offline";
 
+  const qs = repoUrl
+    ? `?repo=${encodeURIComponent(repoUrl)}&name=${encodeURIComponent(repoName || "")}`
+    : "";
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -32,6 +36,16 @@ export default function Layout({ repoName, children }) {
           <span className="brand-mark">Code</span>Trace
         </Link>
         {repoName && <span className="repo-pill">{repoName}</span>}
+        {repoUrl && (
+          <nav className="mode-tabs">
+            <Link to={`/qna${qs}`} className={`mode-tab${mode === "qna" ? " active" : ""}`}>
+              Q&amp;A
+            </Link>
+            <Link to={`/flow${qs}`} className={`mode-tab${mode === "flow" ? " active" : ""}`}>
+              Flow Trace
+            </Link>
+          </nav>
+        )}
         <span className={`status-dot ${statusClass}`}>{statusLabel}</span>
       </header>
       <main className="content">{children}</main>

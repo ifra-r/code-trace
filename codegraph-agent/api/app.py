@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from adapters.parsing.python_parser import PythonParser
 from adapters.storage.sqlite_store import SqliteGraphStore
 from adapters.vcs.github_scanner import GitHubScanner
+from core.agent.flow_tracer import FlowTracer
 from core.agent.qa_agent import QAAgent
 from core.graph.graph_builder import GraphBuilder
 
@@ -70,6 +71,12 @@ class IndexRequest(BaseModel):
 class AskRequest(BaseModel):
     url: str
     question: str
+
+
+class TraceRequest(BaseModel):
+    url: str
+    query: str
+    target: Optional[str] = None
 
 
 @app.get("/health")
@@ -186,6 +193,50 @@ def ask(req: AskRequest):
             }
 
     return {"chunks": chunks, "nodes": nodes}
+
+
+@app.post("/trace")
+def trace(req: TraceRequest):
+    """Flow trace over an already-indexed repo. Calls FlowTracer.trace
+    (core/agent/flow_tracer.py, step 8) directly and returns its
+    {nodes, edges, steps} UNCHANGED -- only adding full source_text onto
+    each node dict, since FlowTracer's own node payload is summary-only
+    (see _node_payload). Same pattern as /ask attaching source_text to
+    citations: augmenting the existing structure, not inventing a second
+    one."""
+    try:
+        local_path = scanner.clone(req.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    db_path = _db_path_for(Path(local_path).name)
+    if not db_path.exists():
+        raise HTTPException(status_code=404,
+                             detail="Repository not indexed yet. Index it first.")
+
+    store = SqliteGraphStore(str(db_path))
+    if store.get_repo_by_url(req.url) is None:
+        raise HTTPException(status_code=404,
+                             detail="Repository not indexed yet. Index it first.")
+
+    try:
+        llm = _get_llm()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        result = FlowTracer(store, llm).trace(req.query, req.target)
+    except Exception as exc:  # Groq rate limits, transient API errors, etc.
+        raise HTTPException(status_code=502, detail=f"LLM request failed: {exc}") from exc
+
+    for node in result["nodes"]:
+        full = store.get_node(node["id"])
+        if full is not None:
+            node["source_text"] = full.source_text
+
+    return result
 
 
 # ---------------- internals ----------------

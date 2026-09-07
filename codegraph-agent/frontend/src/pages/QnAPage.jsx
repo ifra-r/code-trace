@@ -61,7 +61,7 @@ export default function QnAPage() {
   if (!repoUrl) return null; // redirecting to "/"
 
   return (
-    <Layout repoName={repoName}>
+    <Layout repoName={repoName} repoUrl={repoUrl} mode="qna">
       <div className="chat-page">
         <div className="chat-log">
           {messages.length === 0 && (
